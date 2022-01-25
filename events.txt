@@ -1,0 +1,21 @@
+Note:
+    is_available is the only event to be supplied a direct ID instead of an actual user object.
+    The reason for this is primarily efficiency, since the purchased and expired events will be
+    called far less than the is_available event which will be called for every item per page load
+    there is no need to supply the user if we don't actually have to.
+
+    The Item is also always supplied to support one callback function being used across multiple items.
+
+[sync] is_available(bot, member_id: int, item: Item) -> bool
+[sync/async] purchased(bot, user: discord.User, item: Item) -> None
+[sync/async] expired(bot, user: discord.User, item: Item) -> None
+
+Note:
+    The get event is different to others. Instead it calls an event for each key in the item data. For
+    example 'get_title' would be invoked on the item, and if there is an event that returns a string that
+    value will be used in place of the title.
+
+    Another example would be the ability to overwrite the starting value of the available key using an event
+    called 'get_available' which returns a boolean value. (However is_available should always be used instead.)
+
+[sync] get_*(bot, item) -> Any
