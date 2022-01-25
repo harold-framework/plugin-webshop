@@ -2,16 +2,60 @@
 
 // These are the configuration values for the API. There should be no trailing slash for the
 // DISCORD_BOT_API_URL key.
+
+// NOTE:
+//  Since we're executing this inside of a page which is not always executed, we must ensure that
+//  the cookie name begins with an underscore character. This is to ensure that the CookieController
+//  doesn't automatically discard the cookie since it is un-registered.
 define("DISCORD_BOT_API_URL", "https://api.my.website/plugins/webshop");
 define("DISCORD_BOT_API_KEY", "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
+define("DISCORD_SHOP_COOKIE_NAME", "_DISCORD_SHOP_ID");
 $path = str_replace(APP_PATH."/pages", "", __DIR__);
 
-// If there is no 'id' GET argument set, display an error.
-if (!isset($_GET["id"]) || empty($_GET["id"])) { raise(400, "Missing required identification key. Try doing /shop in the Discord Server!"); }
+// This function simply takes in any API response and checks its success status. If the response
+// was unsuccessful it will then attempt to gather the "status_code" key from the response. If this
+// key is 401, then we know that the API is telling us that the provided ID is invalid, so we should
+// destroy the stored cookie on the users system to prevent them from constantly experiencing the issue.
+function destroyIncorrectID(array $response): void {
+    if ($response["success"]) { return; }
+    if (!array_key_exists("status_code", $response)) { return; }
+    if ($response["status_code"] == 401) {
+
+        // If the status_code is 401, then we should discard the users ID cookie.
+        CookieController::delete(DISCORD_SHOP_COOKIE_NAME);
+
+    }
+}
+
+// If there is an 'id' argument set, we should set the users cookie value and then refresh.
+if (isset($_GET["id"]) || !empty($_GET["id"])) {
+
+    // Check to see if we actually successfully set the cookie value.
+    if (!CookieController::set(DISCORD_SHOP_COOKIE_NAME, $_GET["id"])) {
+        raise(500, "Failed to set your ID cookie!", false);
+    }
+
+    // Refresh the page by setting the location back to this current page.
+    HeaderController::location($path);
+    die();
+
+}
+
+// Check to see what the stored ID cookie value is. If it is not set, then we should
+// display an error, since the request does not have any sent ID cookie value, and
+// does not supply any ID in the URL GET arguments.
+$user_id = CookieController::get(DISCORD_SHOP_COOKIE_NAME);
+if (is_null($user_id)) {
+
+    // If the cookie null, the user either does not have the cookie value stored or
+    // it is nolonger valid (eg: Integrity was breached.)
+    raise(400, "Missing valid identification. Try using /shop again in the Discord Server!");
+
+}
 
 // These are the buttons that are shown to the user when there is an error.
 $errorButtons = [
-    "Retry" => $path . "?id=" . urlencode($_GET["id"]),
+    "Retry" => $path,
     "Go Home" => "/"
 ];
 
@@ -26,13 +70,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["item_id"])) {
     // on the website side, all ID verification, item availability, price checks etc are preformed
     // on the API.
     $purchaseResponse = RequestController::api(
-        DISCORD_BOT_API_URL . "/purchase/" . urlencode($_GET["id"]) . "/" . urlencode($_POST["item_id"]),
+        DISCORD_BOT_API_URL . "/purchase/" . urlencode($user_id) . "/" . urlencode($_POST["item_id"]),
         [
             "key" => DISCORD_BOT_API_KEY
         ]
     );
     if (is_null($purchaseResponse)) { raise(503, "Failed to connect to Discord Purchase API.", false, $errorButtons); }
-    if (!$purchaseResponse["success"]) { raise((array_key_exists("status_code", $purchaseResponse) ? $purchaseResponse["status_code"] : 500), $purchaseResponse["error_message"], false, $errorButtons); }    
+    if (!$purchaseResponse["success"]) { destroyIncorrectID($purchaseResponse); raise((array_key_exists("status_code", $purchaseResponse) ? $purchaseResponse["status_code"] : 500), $purchaseResponse["error_message"], false, $errorButtons); }    
 
     // In this case we have recieved a successful response, however this simply means that there were
     // no errors in the request. It does not mean that the purchase was successful. For that, we must
@@ -54,13 +98,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST["item_id"])) {
 // Create a new call to the API to fetch the related user's information. Also fetches all
 // of the items with their availabilty set API side.
 $response = RequestController::api(
-    DISCORD_BOT_API_URL . "/view/" . urlencode($_GET["id"]),
+    DISCORD_BOT_API_URL . "/view/" . urlencode($user_id),
     [
         "key" => DISCORD_BOT_API_KEY
     ]
 );
 if (is_null($response)) { raise(503, "Failed to connect to Discord View API.", false, $errorButtons); }
-if (!$response["success"]) { raise((array_key_exists("status_code", $response) ? $response["status_code"] : 500), $response["error_message"], false, $errorButtons); }
+if (!$response["success"]) { destroyIncorrectID($response); raise((array_key_exists("status_code", $response) ? $response["status_code"] : 500), $response["error_message"], false, $errorButtons); }
 
 // Finally, we move inside of the data key which actually contains the important data.
 $response = $response["data"];
@@ -86,7 +130,7 @@ $baseItemModel = [
         <meta charset="UTF-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Shop</title>
+        <title>Discord Shop</title>
         <script src="https://kit.fontawesome.com/3f16fb12e4.js" crossorigin="anonymous"></script>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
             integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
@@ -379,7 +423,9 @@ $baseItemModel = [
         </div>
 
         <footer>
-            <p class="text-center"><small>Copyright <i class="far fa-copyright"></i> <a class="text-muted" href="https://github.com/morgverd">MorgVerd</a> 2021</small></p>
+            <p class="text-center">
+                <small>Copyright <i class="far fa-copyright"></i> <a class="text-muted" href="https://github.com/morgverd">MorgVerd</a> 2021</small>
+            </p>
         </footer>
 
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
