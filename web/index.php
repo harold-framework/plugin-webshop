@@ -3,10 +3,6 @@
 // These are the configuration values for the API. There should be no trailing slash for the
 // DISCORD_BOT_API_URL key.
 
-// NOTE:
-//  Since we're executing this inside of a page which is not always executed, we must ensure that
-//  the cookie name begins with an underscore character. This is to ensure that the CookieController
-//  doesn't automatically discard the cookie since it is un-registered.
 define("DISCORD_BOT_API_URL", "https://api.my.website/plugins/webshop");
 define("DISCORD_BOT_API_KEY", "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
 define("DISCORD_SHOP_COOKIE_NAME", "_DISCORD_SHOP_ID");
@@ -31,7 +27,10 @@ function destroyIncorrectID(array $response): void {
 if (isset($_GET["id"]) || !empty($_GET["id"])) {
 
     // Check to see if we actually successfully set the cookie value.
-    if (!CookieController::set(DISCORD_SHOP_COOKIE_NAME, $_GET["id"])) {
+    // We also now explicitly set it to disable the allow_unregistered_discard option. This means that the
+    // cookie will not automatically be discarded when the user goes on a different page due to the fact that
+    // this cookie is not always registered internally. (Since the page only executes on request.)
+    if (!CookieController::set(DISCORD_SHOP_COOKIE_NAME, $_GET["id"], allow_unregistered_discard: false)) {
         raise(500, "Failed to set your ID cookie!", false);
     }
 
