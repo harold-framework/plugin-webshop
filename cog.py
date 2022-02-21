@@ -26,11 +26,11 @@ class WebShop(Plugin):
 
 def setup(bot):
 
-    from plugins.webshop.shopManager import shopManager
     from plugins.webshop.api import routes
-
-    bot.utils["managers"]["shopManager"] = shopManager(bot)
     bot.data["api_routes"].append(["webshop", routes])
+
+    # Add the shared manager utility.
+    bot.utils.add("managers", "shopManager", "plugins.webshop.shopManager")
 
     # Load all of the default items.
     for itemFilepath in glob.glob(bot.config.json["rootpath"] + "/plugins/webshop/items/*.py"):

@@ -5,7 +5,7 @@
 
 define("DISCORD_BOT_API_URL", "https://api.my.website/plugins/webshop");
 define("DISCORD_BOT_API_KEY", "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-define("DISCORD_SHOP_COOKIE_NAME", "_DISCORD_SHOP_ID");
+define("DISCORD_SHOP_COOKIE_NAME", "DISCORD_SHOP_ID_v2");
 $path = str_replace(APP_PATH."/pages", "", __DIR__);
 
 // This function simply takes in any API response and checks its success status. If the response
@@ -23,6 +23,15 @@ function destroyIncorrectID(array $response): void {
     }
 }
 
+// Simple function to set the shop cookie, used by the ID request setter, and the basic login function
+// that is linked to the web framework's connections system.
+function setShopCookie(string $request_id): bool {
+    if (!CookieController::set(DISCORD_SHOP_COOKIE_NAME, $request_id, allow_unregistered_discard: false)) {
+        raise(500, "Failed to set your ID cookie!", false);
+    }
+    return true;
+}
+
 // If there is an 'id' argument set, we should set the users cookie value and then refresh.
 if (isset($_GET["id"]) || !empty($_GET["id"])) {
 
@@ -30,9 +39,7 @@ if (isset($_GET["id"]) || !empty($_GET["id"])) {
     // We also now explicitly set it to disable the allow_unregistered_discard option. This means that the
     // cookie will not automatically be discarded when the user goes on a different page due to the fact that
     // this cookie is not always registered internally. (Since the page only executes on request.)
-    if (!CookieController::set(DISCORD_SHOP_COOKIE_NAME, $_GET["id"], allow_unregistered_discard: false)) {
-        raise(500, "Failed to set your ID cookie!", false);
-    }
+    setShopCookie($_GET["id"]);
 
     // Refresh the page by setting the location back to this current page.
     HeaderController::location($path);
@@ -46,9 +53,41 @@ if (isset($_GET["id"]) || !empty($_GET["id"])) {
 $user_id = CookieController::get(DISCORD_SHOP_COOKIE_NAME);
 if (is_null($user_id)) {
 
-    // If the cookie null, the user either does not have the cookie value stored or
-    // it is nolonger valid (eg: Integrity was breached.)
-    raise(400, "Missing valid identification. Try using /shop again in the Discord Server!");
+    // If there's no cookie, then we should check to see if the user is logged in to the
+    // web system and if they have a Discord account linked. If they do, we should issue
+    // a request to the API to generate a request_id from the stored Discord user ID.
+    $requestIDCookieSet = false;
+    if (Auth::isLoggedIn()) {
+        if (Auth::currentUser()->extensions->connections->has("discord")) {
+
+            // Now that we know the user has a linked Discord ID, we should create the request
+            // to the API to gather the request ID that should be used. Note that we do not need
+            // to check if the gathered 'discord_id' is null since we've just checked if we have it.
+            $userIDResponse = RequestController::api(
+                DISCORD_BOT_API_URL . "/get_request_id/" . strval(Auth::currentUser()->get("discord_id")),
+                [
+                    "key" => DISCORD_BOT_API_KEY
+                ]
+            );
+
+            // If the response was unsuccessful for any reason, then we should just ignore it since the user
+            // can simply use the direct '/shop' command instead of relying on the connections system.
+            if (is_array($userIDResponse) && $userIDResponse["success"]) {
+                $user_id = $userIDResponse["request_id"];
+                $requestIDCookieSet = setShopCookie($userIDResponse["request_id"]);
+            }
+        }
+    }
+
+    // If the requestID cookie was not set by the connections system, then just raise an error as there is
+    // no form of authentication provided.
+    if (!$requestIDCookieSet) {
+
+        // If the cookie null, the user either does not have the cookie value stored or
+        // it is nolonger valid (eg: Integrity was breached.)
+        raise(400, "Missing valid identification. Try using /shop again in the Discord Server!");
+
+    }
 
 }
 
@@ -131,9 +170,7 @@ $baseItemModel = [
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Discord Shop</title>
         <script src="https://kit.fontawesome.com/3f16fb12e4.js" crossorigin="anonymous"></script>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet"
-            integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
-        
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
 

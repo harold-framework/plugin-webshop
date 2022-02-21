@@ -254,15 +254,16 @@ class shopManager():
             if self._requestIDs[requestCode] == int(member_id): return requestCode
         return None
 
-    def generateLink(self, member_id: int) -> str:
+    def generateLink(self, member_id: int, just_code: bool = False) -> str:
 
         # Get the members last request code if they have one. If they do not then
         # generate a random string and add that to the requestIDs pool.
         requestCode = self.getRequestCodeFromMemberID(int(member_id))
         if requestCode is None:
-            requestCode = self.bot.utils.helpers.core.randomString()
+            requestCode = self.bot.utils.helpers.core.randomString(length=50)
             self._requestIDs[requestCode] = int(member_id)
 
+        if just_code: return requestCode
         return self.bot.config.json["plugins"]["webshop"]["shop_link"] + "?id=" + str(requestCode)
 
     def loadFile(self, filepath: str) -> bool:
@@ -331,3 +332,4 @@ class shopManager():
             except Exception:
                 traceback.print_exc()
 
+def setup(bot) -> shopManager: return shopManager(bot)

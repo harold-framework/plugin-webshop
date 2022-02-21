@@ -31,7 +31,6 @@ async def get_info(request):
     }
     return web.json_response({"success": True, "data": data}, status=200, content_type='application/json')
 
-
 @routes.get('/plugins/webshop/purchase/{request_id}/{item_id}')
 async def get_purchase(request):
 
@@ -54,3 +53,22 @@ async def get_purchase(request):
     # Now we return the response from the item purchase request and allow for the website
     # to handle the rest.
     return web.json_response({"success": True, "purchase": {"success": success, "reason": reason, "item": item.getData(member_id)}}, status=200, content_type='application/json')
+
+
+# This route is used by the Web Shop when running on a custom framework if a user is already
+# logged in, so they don't have to generate a shop link directly as the website is able to
+# generate and then use a request_id with the already stored Discord ID.
+@routes.get('/plugins/webshop/get_request_id/{user_id}')
+async def get_request_id(request):
+
+    bot = request.app["bot"]
+    user_id = request.match_info["user_id"]
+
+    # First, check to see if the given user_id actually exists within the guild. For slight
+    # optimisation, we can quickly get to see if the provided user_id is valid (is digit).
+    if not user_id.isdigit(): return web.json_response({"success": False, "error_message": "Provided user_id is invalid.", "status_code": 400}, status=200, content_type='application/json')
+    if (await bot.getGuild()).get_member(int(user_id)) is None: return web.json_response({"success": False, "error_message": "You are not apart of the discord server!", "status_code": 401}, status=200, content_type='application/json')
+
+    # Now, since we know that the user_id provided is valid, we can simply use the shopManager
+    # to get the request_id from the provided user_id.
+    return web.json_response({"success": True, "request_id": bot.utils.managers.shopManager.generateLink(int(user_id), just_code=True)}, status=200, content_type='application/json')
